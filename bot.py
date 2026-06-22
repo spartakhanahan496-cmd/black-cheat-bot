@@ -3,16 +3,36 @@ import random
 import string
 import threading
 import time
+import json
+import os
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TOKEN = "8850545430:AAFxrTVb_MZrIHk-PFqrY-VnJ94z49QkRgY"
 CREATOR_ID = 8569900825
 bot = telebot.TeleBot(TOKEN)
 
+# ================== БАЗА ДАННЫХ ==================
+DB_FILE = "keys_db.json"
+
+def load_db():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_db(db):
+    with open(DB_FILE, "w") as f:
+        json.dump(db, f)
+
+# Загружаем базу
+keys_db = load_db()
+
+# ================== ГЕНЕРАЦИЯ ==================
 def generate_key(length):
     chars = string.ascii_uppercase + string.digits
     return ''.join(random.choices(chars, k=length))
 
+# ================== КНОПКИ ==================
 @bot.message_handler(commands=['start'])
 def start(message):
     if message.from_user.id != CREATOR_ID:
@@ -55,6 +75,10 @@ def gen_callback(call):
         bot.answer_callback_query(call.id, text="Ошибка!")
         return
 
+    # Сохраняем ключ в базу
+    keys_db[key] = {"duration": label, "used": False}
+    save_db(keys_db)
+
     bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
@@ -63,24 +87,36 @@ def gen_callback(call):
     )
     bot.answer_callback_query(call.id)
 
-# ================== ВСТРОЕННЫЙ СТОРОЖ (Keep-Alive) ==================
-# Не даёт Render'у заснуть, пингуя себя каждые 3 секунды.
+# ================== ПРОВЕРКА КЛЮЧА ДЛЯ APK ==================
+@bot.message_handler(commands=['check'])
+def check_key(message):
+    try:
+        args = message.text.split()
+        if len(args) != 2:
+            bot.reply_to(message, "Используй: /check [ключ]")
+            return
+        key = args[1].strip()
+        if key in keys_db and not keys_db[key]["used"]:
+            # Помечаем ключ как использованный
+            keys_db[key]["used"] = True
+            save_db(keys_db)
+            bot.reply_to(message, "✅ Ключ валиден! Активация разрешена.")
+        else:
+            bot.reply_to(message, "❌ Неверный или уже использованный ключ!")
+    except:
+        bot.reply_to(message, "❌ Ошибка проверки.")
+
+# ================== KEEP-ALIVE ==================
 def keep_alive():
     while True:
         try:
-            # Бот отправляет сам себе пустой запрос
             bot.get_me()
-        except Exception:
+        except:
             pass
-        time.sleep(3)  # 3 секунды — идеально, чтобы не спамить API
+        time.sleep(3)
 
-# Запускаем сторожа в отдельном потоке (не мешает работе кнопок)
 threading.Thread(target=keep_alive, daemon=True).start()
 
-# ================== ЗАПУСК ==================
 if __name__ == "__main__":
-    print("🤖 Бот запущен с вечным Keep-Alive!")
-    try:
-        bot.polling(non_stop=True, interval=0.5)
-    except Exception as e:
-        print(f"❌ Ошибка: {e}")
+    print("🤖 Бот запущен с базой данных!")
+    bot.polling(non_stop=True)
