@@ -1,6 +1,8 @@
 import telebot
 import random
 import string
+import threading
+import time
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TOKEN = "8850545430:AAFxrTVb_MZrIHk-PFqrY-VnJ94z49QkRgY"
@@ -53,7 +55,6 @@ def gen_callback(call):
         bot.answer_callback_query(call.id, text="Ошибка!")
         return
 
-    # Ключ отправляется ВНУТРИ ТЕКСТА с дополнительными кавычками
     bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
@@ -62,4 +63,24 @@ def gen_callback(call):
     )
     bot.answer_callback_query(call.id)
 
-bot.polling(non_stop=True)
+# ================== ВСТРОЕННЫЙ СТОРОЖ (Keep-Alive) ==================
+# Не даёт Render'у заснуть, пингуя себя каждые 3 секунды.
+def keep_alive():
+    while True:
+        try:
+            # Бот отправляет сам себе пустой запрос
+            bot.get_me()
+        except Exception:
+            pass
+        time.sleep(3)  # 3 секунды — идеально, чтобы не спамить API
+
+# Запускаем сторожа в отдельном потоке (не мешает работе кнопок)
+threading.Thread(target=keep_alive, daemon=True).start()
+
+# ================== ЗАПУСК ==================
+if __name__ == "__main__":
+    print("🤖 Бот запущен с вечным Keep-Alive!")
+    try:
+        bot.polling(non_stop=True, interval=0.5)
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
