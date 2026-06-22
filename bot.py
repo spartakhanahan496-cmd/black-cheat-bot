@@ -11,12 +11,6 @@ def generate_key(length):
     chars = string.ascii_uppercase + string.digits
     return ''.join(random.choices(chars, k=length))
 
-def get_copy_button(text_to_copy):
-    markup = InlineKeyboardMarkup()
-    btn = InlineKeyboardButton("📋 Скопировать ключ", callback_data=f"copy|{text_to_copy}")
-    markup.add(btn)
-    return markup
-
 @bot.message_handler(commands=['start'])
 def start(message):
     if message.from_user.id != CREATOR_ID:
@@ -25,13 +19,13 @@ def start(message):
 
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(
-        InlineKeyboardButton("🔑 Ключ на 1 день", callback_data="gen|1день"),
-        InlineKeyboardButton("🔑 Ключ на 7 дней", callback_data="gen|7дней"),
-        InlineKeyboardButton("🔑 Ключ на 30 дней", callback_data="gen|30дней"),
-        InlineKeyboardButton("🔑 Ключ на 365 дней", callback_data="gen|365дней"),
-        InlineKeyboardButton("♾️ Ключ навсегда", callback_data="gen|бесконечно")
+        InlineKeyboardButton("🔑 1 день", callback_data="gen|1день"),
+        InlineKeyboardButton("🔑 7 дней", callback_data="gen|7дней"),
+        InlineKeyboardButton("🔑 30 дней", callback_data="gen|30дней"),
+        InlineKeyboardButton("🔑 365 дней", callback_data="gen|365дней"),
+        InlineKeyboardButton("♾️ Навсегда", callback_data="gen|бесконечно")
     )
-    bot.reply_to(message, "🤖 Выбери срок ключа:", reply_markup=markup)
+    bot.reply_to(message, "🤖 Выбери срок:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('gen|'))
 def gen_callback(call):
@@ -59,22 +53,13 @@ def gen_callback(call):
         bot.answer_callback_query(call.id, text="Ошибка!")
         return
 
+    # Ключ отправляется ВНУТРИ ТЕКСТА с дополнительными кавычками
     bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
-        text=f"✅ Готово!\nСрок: {label}\nКлюч: `{key}`",
-        reply_markup=get_copy_button(key)
+        text=f"✅ Готово!\nСрок: {label}\n\n🔑 `{key}`",
+        parse_mode='Markdown'
     )
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('copy|'))
-def copy_callback(call):
-    key = call.data.split('|')[1]
-    bot.answer_callback_query(call.id, text="✅ Ключ скопирован в буфер!")
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        text=f"✅ Готово!\nКлюч скопирован в буфер.\nКлюч: `{key}`",
-        reply_markup=None
-    )
+    bot.answer_callback_query(call.id)
 
 bot.polling(non_stop=True)
