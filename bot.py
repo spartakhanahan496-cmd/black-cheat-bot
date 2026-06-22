@@ -3,15 +3,20 @@ import random
 import string
 import threading
 import time
-import json
-import os
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TOKEN = "8850545430:AAFxrTVb_MZrIHk-PFqrY-VnJ94z49QkRgY"
 CREATOR_ID = 8569900825
 bot = telebot.TeleBot(TOKEN)
 
-# ================== БАЗА ДАННЫХ ==================
+# ================== ГЕНЕРАЦИЯ КЛЮЧА ==================
+def generate_key(length):
+    chars = string.ascii_uppercase + string.digits
+    return ''.join(random.choices(chars, k=length))
+
+# ================== БАЗА ДАННЫХ (для защиты от повторов) ==================
+import json
+import os
 DB_FILE = "keys_db.json"
 
 def load_db():
@@ -24,15 +29,9 @@ def save_db(db):
     with open(DB_FILE, "w") as f:
         json.dump(db, f)
 
-# Загружаем базу
 keys_db = load_db()
 
-# ================== ГЕНЕРАЦИЯ ==================
-def generate_key(length):
-    chars = string.ascii_uppercase + string.digits
-    return ''.join(random.choices(chars, k=length))
-
-# ================== КНОПКИ ==================
+# ================== КНОПКИ ПРИ /START ==================
 @bot.message_handler(commands=['start'])
 def start(message):
     if message.from_user.id != CREATOR_ID:
@@ -49,6 +48,7 @@ def start(message):
     )
     bot.reply_to(message, "🤖 Выбери срок:", reply_markup=markup)
 
+# ================== ГЕНЕРАЦИЯ ПО КНОПКЕ ==================
 @bot.callback_query_handler(func=lambda call: call.data.startswith('gen|'))
 def gen_callback(call):
     if call.from_user.id != CREATOR_ID:
@@ -59,26 +59,32 @@ def gen_callback(call):
     if duration == "1день":
         key = generate_key(16)
         label = "1 день"
+        duration_ms = 86400000
     elif duration == "7дней":
         key = generate_key(17)
         label = "7 дней"
+        duration_ms = 604800000
     elif duration == "30дней":
         key = generate_key(18)
         label = "30 дней"
+        duration_ms = 2592000000
     elif duration == "365дней":
         key = generate_key(19)
         label = "365 дней"
+        duration_ms = 31536000000
     elif duration == "бесконечно":
         key = generate_key(20)
         label = "Бесконечно"
+        duration_ms = 0
     else:
         bot.answer_callback_query(call.id, text="Ошибка!")
         return
 
-    # Сохраняем ключ в базу
-    keys_db[key] = {"duration": label, "used": False}
+    # Сохраняем в базу
+    keys_db[key] = {"duration": duration_ms, "used": False}
     save_db(keys_db)
 
+    # Отправляем ключ в формате с кликабельным текстом
     bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
@@ -87,7 +93,7 @@ def gen_callback(call):
     )
     bot.answer_callback_query(call.id)
 
-# ================== ПРОВЕРКА КЛЮЧА ДЛЯ APK ==================
+# ================== ОБРАБОТКА ЗАПРОСОВ ОТ APK ==================
 @bot.message_handler(commands=['check'])
 def check_key(message):
     try:
@@ -96,27 +102,31 @@ def check_key(message):
             bot.reply_to(message, "Используй: /check [ключ]")
             return
         key = args[1].strip()
+        
         if key in keys_db and not keys_db[key]["used"]:
-            # Помечаем ключ как использованный
+            # Помечаем как использованный
             keys_db[key]["used"] = True
             save_db(keys_db)
-            bot.reply_to(message, "✅ Ключ валиден! Активация разрешена.")
+            duration_ms = keys_db[key]["duration"]
+            bot.reply_to(message, f"✅|{duration_ms}")
         else:
             bot.reply_to(message, "❌ Неверный или уже использованный ключ!")
-    except:
+    except Exception:
         bot.reply_to(message, "❌ Ошибка проверки.")
 
-# ================== KEEP-ALIVE ==================
+# ================== ВЕЧНЫЙ БУДИЛЬНИК (Keep-Alive для Render) ==================
 def keep_alive():
     while True:
         try:
+            # Безопасный пинг, чтобы Render не усыпил бота
             bot.get_me()
-        except:
+        except Exception:
             pass
-        time.sleep(3)
+        time.sleep(45)  # 45 секунд — идеально, чтобы не нагружать API
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
+# ================== ЗАПУСК ==================
 if __name__ == "__main__":
-    print("🤖 Бот запущен с базой данных!")
+    print("🤖 Бот запущен с вечным будильником!")
     bot.polling(non_stop=True)
